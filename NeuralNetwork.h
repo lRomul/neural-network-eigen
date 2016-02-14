@@ -26,7 +26,7 @@ public:
 	void SetWeights(vector<MatrixXd> const& theta);
 	vector<MatrixXd> GetWeights() const;
 
-	VectorXd Feedforward(MatrixXd const& X);
+	MatrixXd Feedforward(MatrixXd const& X);
 
 	// Outputs the predicted label of X
 	VectorXd Predict(MatrixXd const& X);
