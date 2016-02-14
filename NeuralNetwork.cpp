@@ -68,7 +68,7 @@ void NeuralNetwork::RandomWeights()
 	}
 }
 
-VectorXd NeuralNetwork::Feedforward(MatrixXd const& X)
+MatrixXd NeuralNetwork::Feedforward(MatrixXd const& X)
 {
 	size_t m = X.rows();
 
