@@ -4,8 +4,8 @@
 #include <fstream>
 
 
-NeuralNetwork::NeuralNetwork(vector<size_t> const& layer_sizes, double lambda)
-	: layerSizes(layer_sizes), lambda(lambda)
+NeuralNetwork::NeuralNetwork(vector<size_t> const& layerSizes, double regulParam)
+	: layerSizes(layerSizes), regulParam(regulParam)
 {
 
 	if (NumberOfLayers() < 2)				// number of layer equal or more then 2 
@@ -15,12 +15,12 @@ NeuralNetwork::NeuralNetwork(vector<size_t> const& layer_sizes, double lambda)
 	{
 		size_t rows = layerSizes[i + 1];
 		size_t cols = layerSizes[i] + 1;
-		Theta.push_back(MatrixXd::Zero(rows, cols));
+		Weights.push_back(MatrixXd::Zero(rows, cols));
 	}
 
-	a.resize(NumberOfLayers());
+	neuronalActiv.resize(NumberOfLayers());
 	delta.resize(NumberOfLayers() - 1);
-	ThetaGrad.resize(Theta.size());
+	WeightsGrad.resize(Weights.size());
 
 	RandomWeights();
 }
@@ -47,12 +47,12 @@ vector<size_t> NeuralNetwork::GetLayerSizes() const
 
 double NeuralNetwork::GetRegulParam() const
 {
-	return lambda;
+	return regulParam;
 }
 
-void NeuralNetwork::SetRegulParam(double lambda)
+void NeuralNetwork::SetRegulParam(double regulParam)
 {
-	this->lambda = lambda;
+	this->regulParam = regulParam;
 }
 
 //Randomly initialize the weights of a layer so that break the symmetry while training the neural network.
@@ -64,29 +64,47 @@ void NeuralNetwork::RandomWeights()
 	{
 		size_t rows = layerSizes[i + 1];
 		size_t cols = layerSizes[i] + 1;
-		Theta[i] = MatrixXd::Random(rows, cols) * eps;
+		Weights[i] = MatrixXd::Random(rows, cols) * eps;
 	}
 }
 
-MatrixXd NeuralNetwork::Feedforward(MatrixXd const& X)
-{
-	size_t m = X.rows();
 
-	a[0].resize(X.rows(), X.cols() + 1);
-	a[0] << VectorXd::Ones(X.rows()), X;
+void NeuralNetwork::SetWeights(vector<MatrixXd> const& weights)
+{
+	if (weights.size() != Weights.size())
+		throw exception();
+	for (size_t i = 0; i < weights.size(); ++i)
+		if (weights[i].rows() != Weights[i].rows() || weights[i].cols() != Weights[i].cols())
+			throw exception();
+
+	Weights = weights;
+}
+
+vector<MatrixXd> NeuralNetwork::GetWeights() const
+{
+	return Weights;
+}
+
+
+VectorXd NeuralNetwork::Feedforward(MatrixXd const& X)
+{
+	size_t numberOfExamples = X.rows();
+
+	neuronalActiv[0].resize(X.rows(), X.cols() + 1);
+	neuronalActiv[0] << VectorXd::Ones(X.rows()), X;
 
 	for (size_t i = 1; i < NumberOfLayers(); ++i)
 	{
 		if (i != NumberOfLayers() - 1) {
-			a[i].resize(m, layerSizes[i] + 1);
-			a[i].col(0) << VectorXd::Ones(m);
-			a[i].rightCols(a[i].cols() - 1) = Sigmoid(a[i - 1] * Theta[i - 1].transpose());
+			neuronalActiv[i].resize(numberOfExamples, layerSizes[i] + 1);
+			neuronalActiv[i].col(0) << VectorXd::Ones(numberOfExamples);
+			neuronalActiv[i].rightCols(neuronalActiv[i].cols() - 1) = Sigmoid(neuronalActiv[i - 1] * Weights[i - 1].transpose());
 		}
 		else
-			a[i] = Sigmoid(a[i - 1] * Theta[i - 1].transpose());
+			neuronalActiv[i] = Sigmoid(neuronalActiv[i - 1] * Weights[i - 1].transpose());
 	}
 
-	return a.back();
+	return neuronalActiv.back();
 }
 
 VectorXd NeuralNetwork::Predict(MatrixXd const& X)
@@ -94,85 +112,64 @@ VectorXd NeuralNetwork::Predict(MatrixXd const& X)
 	Feedforward(X);
 
 	int maxInd = 0;
-	VectorXd result(X.rows());
+	VectorXd predictions(X.rows());
 	for (int i = 0; i < X.rows(); ++i)
 	{
-		a.back().row(i).maxCoeff(&maxInd);
-		result(i) = maxInd;
+		neuronalActiv.back().row(i).maxCoeff(&maxInd);
+		predictions(i) = maxInd;
 	}
 
-	return result;
+	return predictions;
 }
 
 
 pair<double, vector<MatrixXd>> NeuralNetwork::CostFunction(MatrixXd const& X, MatrixXd const& Y)
 {
-	size_t m = X.rows();
+	size_t numberOfExamples = X.rows();
 
 	// Feedforward
-	a[0] = X;
+	neuronalActiv[0] = X;
 
 	for (size_t i = 1; i < NumberOfLayers(); ++i)
 	{
 		if (i != NumberOfLayers() - 1) {
-			a[i].resize(m, layerSizes[i]+1);
-			a[i].col(0) << VectorXd::Ones(m);
-			a[i].rightCols(a[i].cols() - 1) = Sigmoid(a[i - 1] * Theta[i - 1].transpose());
+			neuronalActiv[i].resize(numberOfExamples, layerSizes[i] + 1);
+			neuronalActiv[i].col(0) << VectorXd::Ones(numberOfExamples);
+			neuronalActiv[i].rightCols(neuronalActiv[i].cols() - 1) = Sigmoid(neuronalActiv[i - 1] * Weights[i - 1].transpose());
 		}
 		else
-			a[i] = Sigmoid(a[i - 1] * Theta[i - 1].transpose());
+			neuronalActiv[i] = Sigmoid(neuronalActiv[i - 1] * Weights[i - 1].transpose());
 	}
 
 	// Cost function
-	double regul = 0;
+	double regulSum = 0;
 	for (size_t i = 0; i < NumberOfLayers() - 1; ++i)
 	{
-		regul += Theta[i].rightCols(layerSizes[i]).array().square().sum();
+		regulSum += Weights[i].rightCols(layerSizes[i]).array().square().sum();
 	}
 
-	double J = (-1.0 / m) * (a.back().array().log().matrix().cwiseProduct(Y)
-		+ (1 - a.back().array()).log().matrix().cwiseProduct((1-Y.array()).matrix())).sum() + (lambda / (2.0 * m)) * regul;
+	double costSum = (-1.0 / numberOfExamples) * (neuronalActiv.back().array().log().matrix().cwiseProduct(Y)
+		+ (1.0 - neuronalActiv.back().array()).log().matrix().cwiseProduct((1-Y.array()).matrix())).sum()
+			+ (regulParam / (2.0 * numberOfExamples)) * regulSum;		// cross-entropy cost function
 
 	// Backpropagation
-	delta.back() = a.back() - Y;
+	delta.back() = neuronalActiv.back() - Y;
 
 	for (int i = NumberOfLayers() - 3; i >= 0; --i)
 	{
-		delta[i] = (delta[i + 1] * Theta[i + 1]).cwiseProduct(a[i + 1]).cwiseProduct((1 - a[i + 1].array()).matrix());
+		delta[i] = (delta[i + 1] * Weights[i + 1]).cwiseProduct(SigmoidDerivative(neuronalActiv[i + 1]));
 	}
 
-	for (size_t i = 0; i < ThetaGrad.size(); ++i)
+	for (size_t i = 0; i < WeightsGrad.size(); ++i)
 	{
-		if (i != ThetaGrad.size() - 1)
-			ThetaGrad[i] = (1.0 / m) * (delta[i].rightCols(delta[i].cols() - 1).transpose() * a[i]);
+		if (i != WeightsGrad.size() - 1)
+			WeightsGrad[i] = (1.0 / numberOfExamples) * (delta[i].rightCols(delta[i].cols() - 1).transpose() * neuronalActiv[i]);
 		else
-			ThetaGrad[i] = (1.0 / m) * (delta[i].transpose() * a[i]);
-		ThetaGrad[i].rightCols(ThetaGrad[i].cols() - 1) += (lambda / m) * Theta[i].rightCols(Theta[i].cols() - 1);
+			WeightsGrad[i] = (1.0 / numberOfExamples) * (delta[i].transpose() * neuronalActiv[i]);
+		WeightsGrad[i].rightCols(WeightsGrad[i].cols() - 1) += (regulParam / numberOfExamples) * Weights[i].rightCols(Weights[i].cols() - 1);
 	}
 
-	return pair<double, vector<MatrixXd>>(J, ThetaGrad);
-}
-
-
-MatrixXd Sigmoid(MatrixXd const& m)
-{
-	return 1.0 / (1.0 + (-m).array().exp());
-}
-
-void NeuralNetwork::SetWeights(vector<MatrixXd> const& theta)
-{
-	if (theta.size() != Theta.size())
-		throw exception();
-	for (size_t i = 0; i < theta.size(); ++i)
-		if (theta[i].rows() != Theta[i].rows() || theta[i].cols() != Theta[i].cols())
-			throw exception();
-
-	Theta = theta;
-}
-
-vector<MatrixXd> NeuralNetwork::GetWeights() const
-{
-	return Theta;
+	return pair<double, vector<MatrixXd>>(costSum, WeightsGrad);
 }
 
 
@@ -185,19 +182,19 @@ double NeuralNetwork::BachTrain(MatrixXd const& inputX, VectorXd const& y, size_
 	for (int i = 0; i < Y.rows(); ++i)
 		Y(i, int(y(i))) = 1;
 
-	pair<double, vector<MatrixXd>> J_thetaGrad;
+	pair<double, vector<MatrixXd>> costSum_weightsGrad;
 	for (size_t i = 0; i < maxIter; ++i)
 	{
-		J_thetaGrad = CostFunction(X, Y);
+		costSum_weightsGrad = CostFunction(X, Y);
 
-		std::cout << "Iteration: " << i + 1 << "\t" << "Cost function: " << J_thetaGrad.first << "\n";
+		std::cout << "Iteration: " << i + 1 << "\t" << "Cost function: " << costSum_weightsGrad.first << "\n";
 
 		for (size_t j = 0; j < NumberOfLayers() - 1; ++j)   // so slow
-			Theta[j] -= leaningRate * J_thetaGrad.second[j];
+			Weights[j] -= leaningRate * costSum_weightsGrad.second[j];
 
 	}
 
-	return J_thetaGrad.first;
+	return costSum_weightsGrad.first;
 }
 
 
@@ -210,28 +207,39 @@ double NeuralNetwork::MiniBachTrain(MatrixXd const& inputX, VectorXd const& y, s
 	for (int i = 0; i < Y.rows(); ++i)
 		Y(i, int(y(i))) = 1;
 
-	double J = 0;
+	double costSum = 0;
 
-	pair<double, vector<MatrixXd>> J_thetaGrad;
+	pair<double, vector<MatrixXd>> costSum_weightsGrad;
 	for (size_t i = 0; i < maxIter; ++i)
 	{
-		J = 0;
+		costSum = 0;
 
 		for (size_t j = 0; j < X.rows() / bachSize; ++j)
 		{
-			J_thetaGrad = CostFunction(X.block(j*bachSize, 0, bachSize, X.cols()),
+			costSum_weightsGrad = CostFunction(X.block(j*bachSize, 0, bachSize, X.cols()),
 				Y.block(j*bachSize, 0, bachSize, Y.cols()));
 
-			J += J_thetaGrad.first;
+			costSum += costSum_weightsGrad.first;
 
 			for (size_t j = 0; j < NumberOfLayers() - 1; ++j)
-				Theta[j] -= leaningRate * J_thetaGrad.second[j];
+				Weights[j] -= leaningRate * costSum_weightsGrad.second[j];
 		}
 
-		J /= X.rows() / bachSize;
+		costSum /= X.rows() / bachSize;
 
-		std::cout << "Epoch: " << i + 1 << "\t\t" << "Cost function: " << J << "\n";
+		std::cout << "Epoch: " << i + 1 << "\t\t" << "Cost function: " << costSum << "\n";
 	}
 
-	return J;
+	return costSum;
+}
+
+
+MatrixXd Sigmoid(MatrixXd const& x)
+{
+	return 1.0 / (1.0 + (-x).array().exp());
+}
+
+MatrixXd SigmoidDerivative(MatrixXd const& x)
+{
+	return x.cwiseProduct((1.0 - x.array()).matrix());
 }
