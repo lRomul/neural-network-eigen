@@ -14,19 +14,19 @@ public:
 
 	// layer_sizes - vector with sizes of layers ( eg {400, 25, 10} )
 	// lambda - regularization parameter
-	NeuralNetwork(vector<size_t> const& layer_sizes, double lambda = 0);
+	NeuralNetwork(vector<size_t> const& layerSizes, double regularParam = 0);
 
 	size_t GetInputSize() const;
 	size_t GetOutputSize() const;
 	size_t NumberOfLayers() const;
 	vector<size_t> GetLayerSizes() const;
 	double GetRegulParam() const;
-	void SetRegulParam(double lambda);
+	void SetRegulParam(double regulParam);
 	void RandomWeights();
-	void SetWeights(vector<MatrixXd> const& theta);
+	void SetWeights(vector<MatrixXd> const& weights);
 	vector<MatrixXd> GetWeights() const;
 
-	MatrixXd Feedforward(MatrixXd const& X);
+	VectorXd Feedforward(MatrixXd const& X);
 
 	// Outputs the predicted label of X
 	VectorXd Predict(MatrixXd const& X);
@@ -49,16 +49,17 @@ private:
 	pair<double, vector<MatrixXd>> CostFunction(MatrixXd const& X, MatrixXd const& y);
 
 	vector<size_t> layerSizes;
-	double lambda;
-	vector<MatrixXd> Theta; // matrix of weights
+	double regulParam;
+	vector<MatrixXd> Weights; // matrix of weights
 
 
 	// optimization (not have to create the matrix for each iteration)
-	vector<MatrixXd> a;
+	vector<MatrixXd> neuronalActiv;
 	vector<MatrixXd> delta;
-	vector<MatrixXd> ThetaGrad;
+	vector<MatrixXd> WeightsGrad;
 	// can delete after training
 
 };
 
 MatrixXd Sigmoid(MatrixXd const&); // Activation function
+MatrixXd SigmoidDerivative(MatrixXd const&); // Derivative of sigmoid function
